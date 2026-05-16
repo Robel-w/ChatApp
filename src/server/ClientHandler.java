@@ -1,4 +1,6 @@
 package server;
+import db.ChatDB;
+
 import java.io.*;
 import java.net.*;
 
@@ -22,8 +24,20 @@ public class ClientHandler implements Runnable {
             String message;
             while ((message = in.readLine()) != null){
                 System.out.println("Client: " + message);
-                for (PrintWriter client : ChatServer.clients) {
-                    client.println(message);
+                // Save to database (except typing indicators)
+                if (!message.startsWith("__TYPING__:")) {
+                    // Extract username roughly (you can improve this)
+                    String username = message.contains(":") ?
+                            message.split(":")[0].replaceAll("\\[.*?\\]\\s*", "") : "Unknown";
+
+                    ChatDB.saveMessage(username, message);
+                }
+
+                // Broadcast
+                synchronized (ChatServer.clients) {
+                    for (PrintWriter client : ChatServer.clients) {
+                        client.println(message);
+                    }
                 }
 
             }
