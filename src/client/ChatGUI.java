@@ -127,10 +127,14 @@ public class ChatGUI extends JFrame {
                 String filename = file.getName();
                 // Mark as recently sent
                 recentlySentFiles.add(filename);
-                // Send to server
-                out.println("FILE|" + filename + "|" + base64);
-                // Show locally
-                SwingUtilities.invokeLater(() -> receiveFile(filename, base64, true));
+                // After sending...
+                out.println("FILE|" + file.getName() + "|" + base64);
+
+// Show locally
+                SwingUtilities.invokeLater(() -> receiveFile(file.getName(), base64, true));
+
+// ✅ Save to Database
+                ChatDB.saveFile(username, file.getName(), base64);
 
                 // Remove from recent after 3 seconds
                 new Timer(3000, e -> recentlySentFiles.remove(filename)).start();
@@ -240,6 +244,13 @@ public class ChatGUI extends JFrame {
         chatPanel.add(wrapper);
         chatPanel.revalidate();
         chatPanel.repaint();
+    }
+
+    public void addFileFromDB(String sender, String filename, String base64Data) {
+        boolean isSelf = sender.equals(username);
+        SwingUtilities.invokeLater(() -> {
+            receiveFile(filename, base64Data, isSelf);
+        });
     }
 
     public void addMessageFromDB(String sender, String message) {
