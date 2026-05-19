@@ -10,7 +10,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 public class ChatGUI extends JFrame {
-
+    private JButton fileButton;
     private Socket socket;
     private JLabel typingLabel;
     private long lastTypingSent = 0;
@@ -55,6 +55,7 @@ public class ChatGUI extends JFrame {
 
         );
 
+
         // Dark mode background
         chatPanel.setBackground(new Color(30, 30, 30));
 
@@ -85,6 +86,10 @@ public class ChatGUI extends JFrame {
 
         add(typingLabel, BorderLayout.NORTH);
         // EVENTS
+        //send file
+        fileButton = new JButton("File");
+        bottomPanel.add(fileButton, BorderLayout.WEST);
+        fileButton.addActionListener(e -> sendFile());
         // Send button
         sendButton.addActionListener(e -> sendMessage());
 
@@ -120,6 +125,23 @@ public class ChatGUI extends JFrame {
         SwingUtilities.invokeLater(() -> {
             ChatDB.loadRecentMessages(this);
         });
+    }
+    //send file
+    private void sendFile() {
+
+        JFileChooser chooser = new JFileChooser();
+
+        int result = chooser.showOpenDialog(this);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+
+            File file = chooser.getSelectedFile();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Selected: " + file.getName()
+            );
+        }
     }
 
     // SEND MESSAGE
