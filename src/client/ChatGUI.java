@@ -10,6 +10,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 public class ChatGUI extends JFrame {
+
     private Socket socket;
     private JLabel typingLabel;
     private long lastTypingSent = 0;
@@ -34,14 +35,11 @@ public class ChatGUI extends JFrame {
         in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream())
         );
-
-        // Ask username
         username = JOptionPane.showInputDialog(
                 this,
                 "Enter username:"
         );
-        // Send join message
-        out.println(username + " joined the chat");
+        out.println("SYSTEM|" + username + " joined the chat");
 
         // UI SETUP
         setTitle("Java Chat App");
@@ -51,8 +49,10 @@ public class ChatGUI extends JFrame {
 
         // Chat panel
         chatPanel = new JPanel();
+        chatPanel.setAlignmentY(Component.TOP_ALIGNMENT);
         chatPanel.setLayout(
                 new BoxLayout(chatPanel, BoxLayout.Y_AXIS)
+
         );
 
         // Dark mode background
@@ -98,7 +98,7 @@ public class ChatGUI extends JFrame {
                 long now = System.currentTimeMillis();
 
                 if (now - lastTypingSent > 1000) {
-                    out.println("__TYPING__:" + username);
+                    out.println("TYPING|" + username);
                     lastTypingSent = now;
                 }
             }
@@ -108,7 +108,7 @@ public class ChatGUI extends JFrame {
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
-                out.println(username + " left the chat");
+                out.println("SYSTEM|" + username + " left the chat");
             }
         });
 
@@ -131,7 +131,7 @@ public class ChatGUI extends JFrame {
 
             String time = LocalTime.now().format(formatter);
 
-            out.println("[" + time + "] " + username + ": " + msg);
+            out.println("CHAT|[" + time + "] " + username + ": " + msg);
 
             inputField.setText("");
             //save to database
@@ -235,35 +235,47 @@ public class ChatGUI extends JFrame {
 
                     final String finalMsg = msg;
 
-                    final boolean isSelf =
-                            finalMsg.contains(username + ":");
+                    String[] parts = finalMsg.split("\\|", 2);
 
-                    if (finalMsg.startsWith("__TYPING__:")) {
-
-                        String typingUser =
-                                finalMsg.replace("__TYPING__:", "");
-
-                        if (!typingUser.equals(username)) {
-
-                            SwingUtilities.invokeLater(() -> {
-                                showTyping(typingUser);
-                            });
-                        }
-
+                    if (parts.length < 2) {
                         continue;
                     }
 
-                    boolean isSystem =
-                            finalMsg.contains("joined the chat")
-                                    || finalMsg.contains("left the chat");
+                    String type = parts[0];
+                    String content = parts[1];
 
-                    SwingUtilities.invokeLater(() -> {
-                        if (isSystem) {
-                            addSystemMessage(finalMsg);
-                        } else {
-                            addMessage(finalMsg, isSelf);
-                        }
-                    });
+                    switch (type) {
+
+                        case "CHAT":
+
+                            boolean isSelf =
+                                    content.contains(username + ":");
+
+                            SwingUtilities.invokeLater(() -> {
+                                addMessage(content, isSelf);
+                            });
+
+                            break;
+
+                        case "SYSTEM":
+
+                            SwingUtilities.invokeLater(() -> {
+                                addSystemMessage(content);
+                            });
+
+                            break;
+
+                        case "TYPING":
+
+                            if (!content.equals(username)) {
+
+                                SwingUtilities.invokeLater(() -> {
+                                    showTyping(content);
+                                });
+                            }
+
+                            break;
+                    }
                 }
 
             } catch (Exception e) {

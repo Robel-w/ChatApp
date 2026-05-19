@@ -19,30 +19,34 @@ public class ClientHandler implements Runnable {
 
     }
     @Override
-    public void run(){
-        try{
+    public void run() {
+
+        try {
+
             String message;
-            while ((message = in.readLine()) != null){
-                System.out.println("Client: " + message);
-                // Save to database (except typing indicators)
-                if (!message.startsWith("__TYPING__:")) {
-                    // Extract username roughly (you can improve this)
-                    String username = message.contains(":") ?
-                            message.split(":")[0].replaceAll("\\[.*?\\]\\s*", "") : "Unknown";
 
-                    ChatDB.saveMessage(username, message);
-                }
+            while ((message = in.readLine()) != null) {
 
-                // Broadcast
+                System.out.println(message);
+
                 synchronized (ChatServer.clients) {
+
                     for (PrintWriter client : ChatServer.clients) {
                         client.println(message);
                     }
                 }
-
             }
-        }catch (Exception e){
+
+        } catch (Exception e) {
             e.printStackTrace();
+
+        } finally {
+
+            try {
+                ChatServer.clients.remove(out);
+                socket.close();
+            } catch (Exception ignored) {
+            }
         }
     }
 }

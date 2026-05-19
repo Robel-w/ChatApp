@@ -23,7 +23,7 @@ public class ChatDB {
         }
     }
     public static void loadRecentMessages(ChatGUI gui) {
-        String sql = "SELECT username, message, sent_at FROM messages ORDER BY sent_at DESC LIMIT 50";
+        String sql = "SELECT username, message, sent_at FROM messages ORDER BY sent_at ASC LIMIT 50";
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
