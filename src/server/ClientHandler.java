@@ -22,15 +22,10 @@ public class ClientHandler implements Runnable {
     public void run() {
 
         try {
-
             String message;
-
             while ((message = in.readLine()) != null) {
-
                 System.out.println(message);
-
                 synchronized (ChatServer.clients) {
-
                     for (PrintWriter client : ChatServer.clients) {
                         client.println(message);
                     }

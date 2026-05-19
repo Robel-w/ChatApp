@@ -19,15 +19,6 @@ public class ChatServer {
             new Thread(handler).start();
 
         }
-//        Socket socket = serverSocket.accept();
-//        System.out.println("Client connected!");
-//
-//        BufferedReader in = new BufferedReader(
-//                new InputStreamReader(socket.getInputStream()));
-//        String message;
-//        while((message = in.readLine()) != null){
-//            System.out.println("client: " + message);
-//        }
 
     }
 }

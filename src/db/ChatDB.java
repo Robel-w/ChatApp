@@ -22,6 +22,20 @@ public class ChatDB {
                 e.printStackTrace();
         }
     }
+
+    public static void saveFile(String username, String filename, String base64Data) {
+        String sql = "INSERT INTO messages(username, message) VALUES(?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, username);
+            stmt.setString(2, "[FILE] " + filename);
+            stmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public static void loadRecentMessages(ChatGUI gui) {
         String sql = "SELECT username, message, sent_at FROM messages ORDER BY sent_at ASC LIMIT 50";
         try (Connection conn = getConnection();

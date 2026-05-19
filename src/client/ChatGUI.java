@@ -1,71 +1,64 @@
 package client;
 
 import db.ChatDB;
-
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.*;
 import java.net.*;
+import java.nio.file.Files;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 
 public class ChatGUI extends JFrame {
-    private JButton fileButton;
+    private java.util.Set<String> recentlySentFiles = new java.util.HashSet<>();
+
     private Socket socket;
-    private JLabel typingLabel;
-    private long lastTypingSent = 0;
-    private javax.swing.Timer typingStopTimer;
     private String username;
+
+    private PrintWriter out;
+    private BufferedReader in;
+
     private JPanel chatPanel;
     private JScrollPane scrollPane;
     private JTextField inputField;
     private JButton sendButton;
-    private PrintWriter out;
-    private BufferedReader in;
+    private JButton fileButton;
 
-    // Time formatter
-    private final DateTimeFormatter formatter =
-            DateTimeFormatter.ofPattern("hh:mm a");
+    private JLabel typingLabel;
+    private long lastTypingSent = 0;
+    private javax.swing.Timer typingStopTimer;
+
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("hh:mm a");
 
     public ChatGUI(Socket socket) throws Exception {
         this.socket = socket;
-        // NETWORK SETUP
-        out = new PrintWriter(socket.getOutputStream(), true);
 
-        in = new BufferedReader(
-                new InputStreamReader(socket.getInputStream())
-        );
-        username = JOptionPane.showInputDialog(
-                this,
-                "Enter username:"
-        );
+        out = new PrintWriter(socket.getOutputStream(), true);
+        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+        username = JOptionPane.showInputDialog(this, "Enter username:");
+        if (username == null || username.trim().isEmpty()) username = "User" + (System.currentTimeMillis() % 10000);
+
         out.println("SYSTEM|" + username + " joined the chat");
 
-        // UI SETUP
-        setTitle("Java Chat App");
-        setSize(500, 600);
+        // UI
+        setTitle("Chat - " + username);
+        setSize(650, 750);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
-        // Chat panel
         chatPanel = new JPanel();
-        chatPanel.setAlignmentY(Component.TOP_ALIGNMENT);
-        chatPanel.setLayout(
-                new BoxLayout(chatPanel, BoxLayout.Y_AXIS)
-
-        );
-
-
-        // Dark mode background
+        chatPanel.setLayout(new BoxLayout(chatPanel, BoxLayout.Y_AXIS));
         chatPanel.setBackground(new Color(30, 30, 30));
 
-        // Scroll pane
         scrollPane = new JScrollPane(chatPanel);
         scrollPane.setBorder(null);
-
         add(scrollPane, BorderLayout.CENTER);
 
-        // Bottom input panel
+        // Bottom Panel
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.setBackground(new Color(40, 40, 40));
 
@@ -75,33 +68,28 @@ public class ChatGUI extends JFrame {
         inputField.setCaretColor(Color.WHITE);
 
         sendButton = new JButton("Send");
+        fileButton = new JButton("📎");
 
-        bottomPanel.add(inputField, BorderLayout.CENTER);
-        bottomPanel.add(sendButton, BorderLayout.EAST);
+        JPanel inputArea = new JPanel(new BorderLayout());
+        inputArea.add(fileButton, BorderLayout.WEST);
+        inputArea.add(inputField, BorderLayout.CENTER);
+        inputArea.add(sendButton, BorderLayout.EAST);
 
+        bottomPanel.add(inputArea);
         add(bottomPanel, BorderLayout.SOUTH);
 
         typingLabel = new JLabel(" ");
         typingLabel.setForeground(Color.GRAY);
-
         add(typingLabel, BorderLayout.NORTH);
-        // EVENTS
-        //send file
-        fileButton = new JButton("File");
-        bottomPanel.add(fileButton, BorderLayout.WEST);
-        fileButton.addActionListener(e -> sendFile());
-        // Send button
-        sendButton.addActionListener(e -> sendMessage());
 
-        // Enter key
+        // Listeners
+        fileButton.addActionListener(e -> sendFile());
+        sendButton.addActionListener(e -> sendMessage());
         inputField.addActionListener(e -> sendMessage());
 
         inputField.addKeyListener(new java.awt.event.KeyAdapter() {
-            @Override
             public void keyTyped(java.awt.event.KeyEvent e) {
-
                 long now = System.currentTimeMillis();
-
                 if (now - lastTypingSent > 1000) {
                     out.println("TYPING|" + username);
                     lastTypingSent = now;
@@ -109,201 +97,221 @@ public class ChatGUI extends JFrame {
             }
         });
 
-        // Window close event
         addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
                 out.println("SYSTEM|" + username + " left the chat");
             }
         });
 
-        // Start listening
         startMessageReader();
-
         setVisible(true);
 
-        SwingUtilities.invokeLater(() -> {
-            ChatDB.loadRecentMessages(this);
-        });
+        SwingUtilities.invokeLater(() -> ChatDB.loadRecentMessages(this));
     }
-    //send file
+
+    // sending file
     private void sendFile() {
-
         JFileChooser chooser = new JFileChooser();
-
-        int result = chooser.showOpenDialog(this);
-
-        if (result == JFileChooser.APPROVE_OPTION) {
-
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File file = chooser.getSelectedFile();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Selected: " + file.getName()
-            );
+            if (file.length() > 8 * 1024 * 1024) {
+                JOptionPane.showMessageDialog(this, "Max file size: 8MB", "Too Large", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            try {
+                byte[] bytes = Files.readAllBytes(file.toPath());
+                String base64 = Base64.getEncoder().encodeToString(bytes);
+
+                String filename = file.getName();
+                // Mark as recently sent
+                recentlySentFiles.add(filename);
+                // Send to server
+                out.println("FILE|" + filename + "|" + base64);
+                // Show locally
+                SwingUtilities.invokeLater(() -> receiveFile(filename, base64, true));
+
+                // Remove from recent after 3 seconds
+                new Timer(3000, e -> recentlySentFiles.remove(filename)).start();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
-    // SEND MESSAGE
     private void sendMessage() {
-
-        String msg = inputField.getText().trim();
-
-        if (!msg.isEmpty()) {
-
+        String text = inputField.getText().trim();
+        if (!text.isEmpty()) {
             String time = LocalTime.now().format(formatter);
+            String fullMsg = "[" + time + "] " + username + ": " + text;
 
-            out.println("CHAT|[" + time + "] " + username + ": " + msg);
-
+            out.println("CHAT|" + fullMsg);
             inputField.setText("");
-            //save to database
-            ChatDB.saveMessage(username, msg);
+
+            ChatDB.saveMessage(username, text);
         }
     }
-    // For loading old messages from DB
-    public void addMessageFromDB(String sender, String message) {
-        String fullMsg = message; // you can format it as needed
-        boolean isSelf = sender.equals(username);
-        addMessage(fullMsg, isSelf);
+
+    // receive file
+    private void receiveFile(String filename, String base64Data, boolean isSelf) {
+        try {
+            byte[] data = Base64.getDecoder().decode(base64Data);
+            String lower = filename.toLowerCase();
+
+            JPanel wrapper = new JPanel(new FlowLayout(isSelf ? FlowLayout.RIGHT : FlowLayout.LEFT));
+            wrapper.setBackground(new Color(30, 30, 30));
+            wrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+            if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif")) {
+                // Image
+                ImageIcon orig = new ImageIcon(data);
+                Image scaled = orig.getImage().getScaledInstance(220, -1, Image.SCALE_SMOOTH);
+                JLabel imgLabel = new JLabel(new ImageIcon(scaled));
+                imgLabel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+                imgLabel.addMouseListener(new MouseAdapter() {
+                    public void mouseClicked(MouseEvent e) {
+                        showFullImage(orig, filename);
+                    }
+                });
+
+                wrapper.add(imgLabel);
+            } else {
+                // fif it is other file
+                JButton btn = new JButton("📎 " + filename);
+                btn.setBackground(new Color(70, 70, 70));
+                btn.setForeground(Color.WHITE);
+                btn.addActionListener(e -> saveAndOpenFile(filename, data));
+                wrapper.add(btn);
+            }
+
+            chatPanel.add(wrapper);
+            chatPanel.revalidate();
+            chatPanel.repaint();
+
+            SwingUtilities.invokeLater(() -> scrollPane.getVerticalScrollBar().setValue(scrollPane.getVerticalScrollBar().getMaximum()));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    // ADD MESSAGE BUBBLE
+    private void showFullImage(ImageIcon icon, String title) {
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.add(new JScrollPane(new JLabel(icon)));
+        dialog.setSize(900, 700);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private void saveAndOpenFile(String filename, byte[] data) {
+        try {
+            File dir = new File("Downloads");
+            dir.mkdirs();
+            File file = new File(dir, filename);
+            Files.write(file.toPath(), data);
+
+            JOptionPane.showMessageDialog(this, "Saved: " + file.getAbsolutePath());
+            if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(file);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // the normal message
     private void addMessage(String msg, boolean isSelf) {
-
-        JPanel wrapper = new JPanel(
-                new FlowLayout(
-                        isSelf ? FlowLayout.RIGHT : FlowLayout.LEFT
-                )
-        );
-
+        JPanel wrapper = new JPanel(new FlowLayout(isSelf ? FlowLayout.RIGHT : FlowLayout.LEFT));
         wrapper.setBackground(new Color(30, 30, 30));
-        wrapper.setBorder(
-                BorderFactory.createEmptyBorder(5, 5, 5, 5)
-        );
 
-        JLabel messageLabel = new JLabel(msg);
+        JLabel label = new JLabel(msg);
+        label.setOpaque(true);
+        label.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
 
-        messageLabel.setOpaque(true);
-
-        messageLabel.setBorder(
-                BorderFactory.createEmptyBorder(10, 15, 10, 15)
-        );
-
-        // Bubble colors
         if (isSelf) {
-            messageLabel.setBackground(new Color(0, 132, 255));
-            messageLabel.setForeground(Color.WHITE);
+            label.setBackground(new Color(0, 123, 255));
+            label.setForeground(Color.WHITE);
         } else {
-            messageLabel.setBackground(new Color(230, 230, 230));
-            messageLabel.setForeground(Color.BLACK);
+            label.setBackground(new Color(230, 230, 230));
+            label.setForeground(Color.BLACK);
         }
 
-        wrapper.add(messageLabel);
-
-        chatPanel.add(wrapper);
-
-        chatPanel.revalidate();
-        chatPanel.repaint();
-
-        // Auto-scroll
-        SwingUtilities.invokeLater(() -> {
-            JScrollBar vertical =
-                    scrollPane.getVerticalScrollBar();
-
-            vertical.setValue(vertical.getMaximum());
-        });
-    }
-
-    public void addSystemMessage(String msg){
-        JPanel wrapper =  new JPanel(new FlowLayout(FlowLayout.CENTER));
-        wrapper.setBackground(new Color(30, 30, 30));
-        JLabel label = new JLabel(msg);
-        label.setForeground(Color.GRAY);
-        label.setFont(new Font("Arial", Font.ITALIC, 12));
         wrapper.add(label);
         chatPanel.add(wrapper);
         chatPanel.revalidate();
         chatPanel.repaint();
+    }
 
+    public void addMessageFromDB(String sender, String message) {
+        addMessage(message, sender.equals(username));
+    }
+
+    public void addSystemMessage(String msg) {
+        JPanel w = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        w.setBackground(new Color(30, 30, 30));
+        JLabel l = new JLabel(msg);
+        l.setForeground(Color.GRAY);
+        w.add(l);
+        chatPanel.add(w);
+        chatPanel.revalidate();
+        chatPanel.repaint();
     }
 
     private void showTyping(String user) {
-
         typingLabel.setText(user + " is typing...");
-
-        if (typingStopTimer != null) {
-            typingStopTimer.stop();
-        }
-
-        typingStopTimer = new javax.swing.Timer(1500, e -> {
-            typingLabel.setText(" ");
-        });
-
+        if (typingStopTimer != null) typingStopTimer.stop();
+        typingStopTimer = new Timer(1500, e -> typingLabel.setText(" "));
         typingStopTimer.setRepeats(false);
         typingStopTimer.start();
     }
 
-    // MESSAGE LISTENER THREAD
+    // the main listener
     private void startMessageReader() {
-
         new Thread(() -> {
-
             try {
+                String line;
+                while ((line = in.readLine()) != null) {
+                    final String msg = line;
+                    String[] parts = msg.split("\\|", 2);
 
-
-                String msg;
-
-                while ((msg = in.readLine()) != null) {
-
-                    final String finalMsg = msg;
-
-                    String[] parts = finalMsg.split("\\|", 2);
-
-                    if (parts.length < 2) {
-                        continue;
-                    }
+                    if (parts.length < 2) continue;
 
                     String type = parts[0];
                     String content = parts[1];
 
                     switch (type) {
-
                         case "CHAT":
-
-                            boolean isSelf =
-                                    content.contains(username + ":");
-
-                            SwingUtilities.invokeLater(() -> {
-                                addMessage(content, isSelf);
-                            });
-
+                            boolean isSelfChat = content.contains(username + ":");
+                            SwingUtilities.invokeLater(() -> addMessage(content, isSelfChat));
                             break;
 
                         case "SYSTEM":
-
-                            SwingUtilities.invokeLater(() -> {
-                                addSystemMessage(content);
-                            });
-
+                            SwingUtilities.invokeLater(() -> addSystemMessage(content));
                             break;
 
                         case "TYPING":
-
                             if (!content.equals(username)) {
+                                SwingUtilities.invokeLater(() -> showTyping(content));
+                            }
+                            break;
 
+                        case "FILE":
+                            String[] fParts = content.split("\\|", 2);
+                            if (fParts.length == 2) {
+                                String filename = fParts[0];
+                                String base64 = fParts[1];
                                 SwingUtilities.invokeLater(() -> {
-                                    showTyping(content);
+                                    if (!recentlySentFiles.contains(filename)) {
+                                        receiveFile(filename, base64, false);
+                                    }
                                 });
                             }
-
                             break;
                     }
                 }
-
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
         }).start();
     }
 }
